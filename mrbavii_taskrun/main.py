@@ -58,12 +58,46 @@ class Literal(object):
 
 class Environment(object):
     """ A task environment. """
+    
+    NONE = 0
+    STDOUT = 1
+    STDERR = 2
+    STDERROUT = 4
 
     def __init__(self):
         """ Initialize  the environmnet. """
         self._tasks = {}
+        self._funcs = {}
         self._variables = {}
         self._variable_stack = []
+        self._script_stack = []
+
+    def _load(self, filename):
+        """ Load the filename. """
+        try:
+            with open(filename, "rU") as handle:
+                code = handle.read()
+
+            codeobj = compile(code, filename, "exec", dont_inherit=True)
+
+
+            data = dict(self._get_script_globals())
+            data["__file__"] = filename
+
+            self._script_stack.append(filename)
+            exec(code, data, data)
+            self._script_stack.pop()
+        except Error as e:
+            raise
+        except Exception as e:
+            raise Error("{0}:{1}\n{2}".format(type(e).__name__, filename, str(e)))
+
+    def _get_script_globals(self):
+        return {
+            "env": self,
+            "Error": Error,
+            "Literal": Literal
+        }
 
     def __enter__(self):
         """ Save the current variable stack. """
@@ -81,7 +115,7 @@ class Environment(object):
     def pop(self):
         """ Restore the variable stack. """
         self._variables = self._variable_stack.pop()
-
+   
     def __setitem__(self, name, value):
         """ Set a variable value. """
         self._variables[name] = value
@@ -127,125 +161,55 @@ class Environment(object):
         else:
             return value
 
-    def task(self, script, fn, name, **vars):
-        """ Register our taskobject. """
+    def task(self, name=None, once=False, **vars):
+        """ Decorator to register a task. """
         # TODO: warning or error if same name already exists
-        self._tasks[name] = Task(script, fn, vars)
-
-    def call(self, task, **vars):
-        """ Call a task object. """
-        if task in self._tasks:
-            return self._tasks[task].execute(vars)
-        # TODO: error if calling a task that doesn't exist
-
-    def include(self, filename, **vars):
-        """ Include a file. """
-        with self:
-            self.update(**vars)
-            ScriptFile(self, filename)
-
-
-    def output(self, message, handle=sys.stdout):
-        handle.write(message)
-        handle.flush()
-
-    def outputln(self, message, handle=sys.stdout):
-        handle.write(message)
-        handle.write("\n")
-        handle.flush()
-
-    def abort(self, message):
-        self.outputln(message, sys.stderr)
-        sys.exit(-1)
-
-    def error(self, message):
-        self.outputln(message, sys.stderr)
-
-    def info(self, message):
-        self.outputln(message)
-
-
-
-class ScriptFile(object):
-    """ Represent a script file. """
-
-    NONE = 0
-    STDOUT = 1
-    STDERR = 2
-    STDERROUT = 4
-
-    def __init__(self, env, filename):
-        """ Initialize our script file object. """
-        self._env = env
-        self._filename = filename
-
-        try:
-            with open(filename, "rU") as handle:
-                code = handle.read()
-
-            codeobj = compile(code, filename, "exec", dont_inherit=True)
-
-
-            data = dict(self._get_script_globals())
-            data["__file__"] = filename
-
-            exec(code, data, data)
-        except Error as e:
-            raise
-        except Exception as e:
-            raise Error("{0}:{1}\n{2}".format(type(e).__name__, filename, str(e)))
-
-    def _get_script_globals(self):
-        return {
-            "env": self,
-            "Error": Error,
-            "Literal": Literal
-        }
-
-    # Functions to proxy to the environment.
-
-    def __getitem__(self, name):
-        return self._env[name]
-    
-    def __setitem__(self, name, value):
-        self._env[name] = value
-
-    def __contains__(self, name):
-        return name in self._env
-
-    def evaluate(self, variable):
-        return self._env.evaluate(variable)
-
-    def subst(self, value):
-        return self._env.subst(value)
-    
-    def task(self, name=None, **kwargs):
         def wrapper(fn):
-            self._env.task(
-                self,
-                fn,
-                name if name is not None else fn.__name__.replace("_", "-"),
-                **kwargs
-            )
+            if name is not None:
+                _name = name
+            else:
+                _name = fn.__name__.replace("_", ".")
+
+            self._tasks[_name] = Task(self, fn, once, vars)
 
             return fn
-
         return wrapper
 
-    def call(self, name, **vars):
-        return self._env.call(name, **vars)
+    def runtask(self, name, **vars):
+        """ Call a task object. """
+        if name in self._tasks:
+            return self._tasks[name].execute(vars)
+        # TODO: error if calling a task that doesn't exist
 
-    def include(self, *patterns, **vars):
+    def function(self, name=None):
+        """ Decorator to register a function. """
+        # TODO: warn/error if same name already exists
+        def wrapper(fn):
+            if name is not None:
+                _name = name
+            else:
+                _name = fn.__name__.replace("_", ".")
+
+            self._funcs[_name] = fn
+            return fn
+        return wrapper
+
+    def call(self, name, *args, **kwargs):
+        """ Call a registered function. """
+        # TODO: error if calling a function that doesn't exist
+        if name in self._funcs:
+            return self._funcs[name](*args, **kwargs)
+
+    def include(self, *patterns):
+        """ Include a file. """
         for pattern in patterns:
             fullglob = os.path.join(
-                os.path.dirname(self._filename),
-                self._env.subst(pattern)
+                os.path.dirname(self._script_stack[-1]),
+                self.subst(pattern)
             )
 
-        for entry in glob.glob(fullglob):
-            self._env.include(entry, **vars)
-
-    # Execute commands
+            for entry in sorted(glob.glob(fullglob)):
+                self._load(entry)
 
     def capture(self, command, quite=None, abort=True, capture=STDOUT, retvals=(0,)):
         result = self.run(command, quite, abort, capture, retvals)
@@ -257,7 +221,7 @@ class ScriptFile(object):
         # Determine the shell to use
         shell = None
         if "TASKRUN_SHELL" in self:
-            shell = self._env.evaluate("TASKRUN_SHELL")
+            shell = self.evaluate("TASKRUN_SHELL")
 
         # Determine any changes to the shell environment
         shellenv = dict(os.environ)
@@ -274,7 +238,7 @@ class ScriptFile(object):
             quite = bool(self.evaluate("TASKRUN_QUITE"))
 
         if not quite:
-            self._env.info(command)
+            self.info(command)
 
         # Run the command
         try:
@@ -310,20 +274,37 @@ class ScriptFile(object):
 
         return RunResult(stdout, stderr, process.returncode)
 
+    def output(self, message, handle=sys.stdout):
+        handle.write(message)
+        handle.flush()
+
+    def outputln(self, message, handle=sys.stdout):
+        handle.write(message)
+        handle.write("\n")
+        handle.flush()
+
+    def abort(self, message):
+        self.outputln(message, sys.stderr)
+        sys.exit(-1)
+
+    def error(self, message):
+        self.outputln(message, sys.stderr)
+
+    def info(self, message):
+        self.outputln(message)
+
 
 class Task(object):
     """ Represent a task to be called. """
 
-    def __init__(self, script, fn, args):
-        self._script = script
-        self._env = script._env
+    def __init__(self, env, fn, once, args):
+        self._env = env
         self._fn = fn
+        self._once = once
         self._vars = dict(args)
 
         self._called = False
         self._result = None
-        
-        self._once = bool(self._vars.pop("once", False))
 
     def execute(self, vars):
         if self._once and self._called:
@@ -368,7 +349,7 @@ def realmain():
     e["CWD"] = cwd
 
     # Load the script file
-    e.include(cmdfile)
+    e._load(cmdfile)
 
     # TODO: parse the command line for the command to execute
 
@@ -376,7 +357,7 @@ def realmain():
 def main():
     try:
         realmain()
-    except OSError as e:
+    except Error as e:
         print("{0}: {1}".format(type(e).__name__, str(e)))
 
 
