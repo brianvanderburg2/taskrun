@@ -74,23 +74,18 @@ class Environment(object):
 
     def _load(self, filename):
         """ Load the filename. """
-        try:
-            with open(filename, "rU") as handle:
-                code = handle.read()
+        with open(filename, "rU") as handle:
+            code = handle.read()
 
-            codeobj = compile(code, filename, "exec", dont_inherit=True)
+        codeobj = compile(code, filename, "exec", dont_inherit=True)
 
 
-            data = dict(self._get_script_globals())
-            data["__file__"] = filename
+        data = dict(self._get_script_globals())
+        data["__file__"] = filename
 
-            self._script_stack.append(filename)
-            exec(code, data, data)
-            self._script_stack.pop()
-        except Error as e:
-            raise
-        except Exception as e:
-            raise Error("{0}:{1}\n{2}".format(type(e).__name__, filename, str(e)))
+        self._script_stack.append(filename)
+        exec(code, data, data)
+        self._script_stack.pop()
 
     def _get_script_globals(self):
         return {
@@ -357,9 +352,25 @@ def realmain():
 def main():
     try:
         realmain()
-    except Error as e:
-        print("{0}: {1}".format(type(e).__name__, str(e)))
+    except Exception as e:
+        (type, value, tb) = sys.exc_info()
 
+        print("{0}({1})".format(type.__name__, str(value)))
+        stack = []
+        while tb:
+            stack.append(tb)
+            tb = tb.tb_next
+
+        for tb in reversed(stack):
+            lineno = tb.tb_lineno
+
+            fname = tb.tb_frame.f_code.co_filename
+            if fname[0:1] == "<":
+                fglobals = tb.tb_frame.f_globals
+                if "__file__" in fglobals:
+                    fname = fglobals["__file__"]
+
+            print("  {0}:{1}".format(fname, lineno))
 
 
 
