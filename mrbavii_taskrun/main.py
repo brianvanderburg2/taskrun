@@ -1,4 +1,4 @@
-""" Main command script code. """
+""" Main task runner code. """
 
 from __future__ import absolute_import
 
@@ -57,11 +57,11 @@ class Literal(object):
 # Script objects for the program
 
 class Environment(object):
-    """ A command environment. """
+    """ A task environment. """
 
     def __init__(self):
         """ Initialize  the environmnet. """
-        self._commands = {}
+        self._tasks = {}
         self._variables = {}
         self._variable_stack = []
 
@@ -127,16 +127,16 @@ class Environment(object):
         else:
             return value
 
-    def command(self, script, fn, name, **vars):
-        """ Register our command object. """
+    def task(self, script, fn, name, **vars):
+        """ Register our taskobject. """
         # TODO: warning or error if same name already exists
-        self._commands[name] = Command(script, fn, vars)
+        self._tasks[name] = Task(script, fn, vars)
 
-    def call(self, command, **vars):
-        """ Call a command object. """
-        if command in self._commands:
-            return self._commands[command].execute(vars)
-        # TODO: error if calling a command that doesn't exist
+    def call(self, task, **vars):
+        """ Call a task object. """
+        if task in self._tasks:
+            return self._tasks[task].execute(vars)
+        # TODO: error if calling a task that doesn't exist
 
     def include(self, filename, **vars):
         """ Include a file. """
@@ -197,7 +197,7 @@ class ScriptFile(object):
 
     def _get_script_globals(self):
         return {
-            "cmd": self,
+            "env": self,
             "Error": Error,
             "Literal": Literal
         }
@@ -219,9 +219,9 @@ class ScriptFile(object):
     def subst(self, value):
         return self._env.subst(value)
     
-    def command(self, name=None, **kwargs):
+    def task(self, name=None, **kwargs):
         def wrapper(fn):
-            self._env.command(
+            self._env.task(
                 self,
                 fn,
                 name if name is not None else fn.__name__.replace("_", "-"),
@@ -256,13 +256,13 @@ class ScriptFile(object):
 
         # Determine the shell to use
         shell = None
-        if "CMDSCRIPT_SHELL" in self:
-            shell = self._env.evaluate("CMDSCRIPT_SHELL")
+        if "TASKRUN_SHELL" in self:
+            shell = self._env.evaluate("TASKRUN_SHELL")
 
         # Determine any changes to the shell environment
         shellenv = dict(os.environ)
-        if "CMDSCRIPT_SHELLENV" in self:
-            env = self.evaluate("CMDSCRIPT_SHELLENV")
+        if "TASKRUN_SHELLENV" in self:
+            env = self.evaluate("TASKRUN_SHELLENV")
             if isinstance(env, dict):
                 for name in env:
                     shellenv[name] = env[name]
@@ -270,8 +270,8 @@ class ScriptFile(object):
         # Print the command if needed
         command = self.subst(command)
 
-        if quite is None and "CMDSCRIPT_QUITE" in self:
-            quite = bool(self.evaluate("CMDSCRIPT_QUITE"))
+        if quite is None and "TASKRUN_QUITE" in self:
+            quite = bool(self.evaluate("TASKRUN_QUITE"))
 
         if not quite:
             self._env.info(command)
@@ -311,8 +311,8 @@ class ScriptFile(object):
         return RunResult(stdout, stderr, process.returncode)
 
 
-class Command(object):
-    """ Represent a command to be called. """
+class Task(object):
+    """ Represent a task to be called. """
 
     def __init__(self, script, fn, args):
         self._script = script
@@ -349,7 +349,7 @@ def realmain():
     curdir = cwd
     found = False
     while True:
-        cmdfile = os.path.join(curdir, "CommandFile")
+        cmdfile = os.path.join(curdir, "TaskFile")
         if os.path.isfile(cmdfile):
             found = True
             break
@@ -361,7 +361,7 @@ def realmain():
             break
 
     if not found:
-        e.abort("Unable to find CommandFile")
+        e.abort("Unable to find TaskFile")
 
     # Found the file, set up some variables
     e["TOP"] = curdir
