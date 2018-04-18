@@ -2,9 +2,9 @@
 
 from __future__ import absolute_import
 
-__author__      =   "Brian Allen Vanderburg II"
-__copyright__   =   "Copyright (C) 2018 Brian Allen Vanderburg II"
-__license__     =   "Apache License 2.0"
+__author__ = "Brian Allen Vanderburg II"
+__copyright__ = "Copyright (C) 2018 Brian Allen Vanderburg II"
+__license__ = "Apache License 2.0"
 
 
 # Imports
@@ -14,10 +14,8 @@ import glob
 import re
 import types
 import subprocess
-import shlex
 import collections
-import string
-import inspect
+import argparse
 
 try:
     StringTypes = types.StringTypes
@@ -53,12 +51,15 @@ class Literal(object):
     def __init__(self, value):
         self._value = value
 
+    def __str__(self):
+        return str(self._value)
+
 
 # Script objects for the program
 
 class Environment(object):
     """ A task environment. """
-    
+
     NONE = 0
     STDOUT = 1
     STDERR = 2
@@ -84,7 +85,7 @@ class Environment(object):
         data["__file__"] = filename
 
         self._script_stack.append(filename)
-        exec(code, data, data)
+        exec(codeobj, data, data)
         self._script_stack.pop()
 
     def _get_script_globals(self):
@@ -110,7 +111,7 @@ class Environment(object):
     def pop(self):
         """ Restore the variable stack. """
         self._variables = self._variable_stack.pop()
-   
+
     def __setitem__(self, name, value):
         """ Set a variable value. """
         self._variables[name] = value
@@ -143,7 +144,7 @@ class Environment(object):
         elif isinstance(value, list):
             return list(self.subst(i) for i in value)
         elif isinstance(value, dict):
-            return { i: self.subst(value[i]) for i in value }
+            return {i: self.subst(value[i]) for i in value}
         elif isinstance(value, StringTypes):
             def subfn(mo):
                 var = mo.group(0)
@@ -163,7 +164,7 @@ class Environment(object):
             if name is not None:
                 _name = name
             else:
-                _name = fn.__name__.replace("_", ".")
+                _name = fn.__name__
 
             self._tasks[_name] = Task(self, fn, once, vars)
 
@@ -183,7 +184,7 @@ class Environment(object):
             if name is not None:
                 _name = name
             else:
-                _name = fn.__name__.replace("_", ".")
+                _name = fn.__name__
 
             self._funcs[_name] = fn
             return fn
@@ -236,38 +237,33 @@ class Environment(object):
             self.info(command)
 
         # Run the command
-        try:
-            stdout = stderr = None
+        stdout = stderr = None
 
-            if capture & self.STDOUT or capture & self.STDERROUT:
-                stdout = subprocess.PIPE
+        if capture & self.STDOUT or capture & self.STDERROUT:
+            stdout = subprocess.PIPE
 
-            if capture & self.STDERR:
-                stderr = subprocess.PIPE
-            elif capture & self.STDERROUT:
-                stderr = subprocess.STDOUT
+        if capture & self.STDERR:
+            stderr = subprocess.PIPE
+        elif capture & self.STDERROUT:
+            stderr = subprocess.STDOUT
 
-            process = subprocess.Popen(
-                command,
-                executable = shell,
-                stdout=stdout,
-                stderr=stderr,
-                shell = True,
-                env = shellenv
-            )
-            (stdout, stderr) = process.communicate()
-            if process.returncode not in retvals and abort:
-                raise CommandError("Unexpected return value")
-        except OSError as e:
-            # Error occurred starting the shell
-            e = ShellError(shell)
-            raise e
-        except Exception as e:
-            # Error occurred, try to print the file/line that called run
-            e = CommandError(str(e))
-            raise e
+        process = subprocess.Popen(
+            command,
+            executable=shell,
+            stdout=stdout,
+            stderr=stderr,
+            shell=True,
+            env=shellenv
+        )
+        (stdout, stderr) = process.communicate()
+        if process.returncode not in retvals and abort:
+            raise CommandError("Unexpected return value")
 
-        return RunResult(stdout, stderr, process.returncode)
+        return RunResult(
+            stdout.decode() if stdout is not None else None,
+            stderr.decode() if stderr is not None else None,
+            process.returncode
+        )
 
     def output(self, message, handle=sys.stdout):
         handle.write(message)
@@ -280,13 +276,16 @@ class Environment(object):
 
     def abort(self, message):
         self.outputln(message, sys.stderr)
-        sys.exit(-1)
+        self.exit(-1)
 
     def error(self, message):
         self.outputln(message, sys.stderr)
 
     def info(self, message):
         self.outputln(message)
+
+    def exit(self, retcode=0):
+        sys.exit(retcode)
 
 
 class Task(object):
@@ -314,64 +313,147 @@ class Task(object):
 
         return self._result
 
-def realmain():
 
-    # Create our environment
-    e = Environment()
+class App(object):
+    """ An object/wrapper around application-related functions. """
 
-    # Walk up the paths to try to find the script file
-    cwd = os.getcwd()
+    def __init__(self):
+        self.env = Environment()
+        self.cwd = os.getcwd()
+        self.cmdline = None
+        self.taskfile = None
 
-    curdir = cwd
-    found = False
-    while True:
-        cmdfile = os.path.join(curdir, "TaskFile")
-        if os.path.isfile(cmdfile):
-            found = True
-            break
+    def parse_args(self):
+        """ Parse command line. """
+        parser = argparse.ArgumentParser()
 
-        (head, tail) = os.path.split(curdir)
-        if head and head != curdir:
-            curdir = head
-        else:
-            break
+        parser.add_argument(
+            "-f", "--file", dest="file", default="TaskFile",
+            help="Specify an alternative name for TaskFile."
+        )
+        parser.add_argument(
+            "-d", "--dir", dest="dir", default=os.getcwd(),
+            help="Specify a starting directory."
+        )
+        parser.add_argument(
+            "-l", "--list", dest="list", default=False,
+            action="store_true", help="List tasks."
+        )
 
-    if not found:
-        e.abort("Unable to find TaskFile")
+        parser.add_argument(
+            "params", nargs="*",
+            help="""Parameters in the form of <taskname>, <VAR>=<VALUE>, or
+                  <taskname>:<VAR>=<VALUE>[<VAR>=<VALUE>...]"""
+        )
 
-    # Found the file, set up some variables
-    e["TOP"] = curdir
-    e["CWD"] = cwd
+        self.cmdline = parser.parse_args()
 
-    # Load the script file
-    e._load(cmdfile)
+    def find_taskfile(self):
+        """ Find the task file. """
+        filename = self.cmdline.file
+        curdir = self.cmdline.dir
 
-    # TODO: parse the command line for the command to execute
+        while True:
+            taskfile = os.path.join(curdir, filename)
+            if os.path.isfile(taskfile):
+                self.taskfile = taskfile
+                return
+
+            (head, _) = os.path.split(curdir)
+            if head and head != curdir:
+                curdir = head
+            else:
+                break
+
+        self.taskfile = None
+
+    def get_tasks_params(self):
+        """ Return the tasks and parameters. """
+        params = {}
+        tasks = []
+
+        for cmdparam in self.cmdline.params:
+            if ":" in cmdparam:
+                # task:NAME=VALUE:NAME=VALUE:NAME=VALUE
+                parts = cmdparam.split(":")
+                taskparams = {}
+                for taskparam in parts[1:]:
+                    if "=" in taskparam:
+                        (name, value) = taskparam.split("=", 1)
+                        taskparams[name] = value
+
+                tasks.append((parts[0], taskparams))
+            elif "=" in cmdparam:
+                # NAME=VALUE
+                (name, value) = cmdparam.split("=", 1)
+                params[name] = value
+            else:
+                # taskname
+                tasks.append((cmdparam, {}))
+
+        return (tasks, params)
+
+    def main(self):
+        """ Run the main application. """
+
+        env = self.env
+
+        # Initial setup
+        self.parse_args()
+        self.find_taskfile()
+
+        if self.taskfile is None:
+            env.abort("Unable to find {0}".format(self.cmdline.file))
+
+        # Load the task file
+        env["TOP"] = os.path.dirname(self.taskfile)
+        env["CWD"] = self.cwd
+        env._load(self.taskfile)
+
+        # Print tasks list if requested
+        if self.cmdline.list:
+            for name in env._tasks:
+                if not name.startswith("_"):
+                    env.outputln(name)
+            env.exit()
+
+        # Get the tasks and parameters from the cmdline and execute the tasks
+        (tasks, params) = self.get_tasks_params()
+        env.update(**params)
+
+        for (task, params) in tasks:
+            env.runtask(task, **params)
+
+    def run(self):
+        """ Run the application. """
+        try:
+            self.main()
+        except:
+            (type, value, tb) = sys.exc_info()
+            env = self.env
+
+            env.error("{0}({1})".format(type.__name__, str(value)))
+            stack = []
+            while tb:
+                stack.append(tb)
+                tb = tb.tb_next
+
+            for tb in reversed(stack):
+                lineno = tb.tb_lineno
+
+                fname = tb.tb_frame.f_code.co_filename
+                if fname[0:1] == "<":
+                    fglobals = tb.tb_frame.f_globals
+                    if "__file__" in fglobals:
+                        fname = fglobals["__file__"]
+
+                env.error("  {0}:{1}".format(fname, lineno))
+            env.abort("Aborting due to errors.")
 
 
 def main():
-    try:
-        realmain()
-    except Exception as e:
-        (type, value, tb) = sys.exc_info()
-
-        print("{0}({1})".format(type.__name__, str(value)))
-        stack = []
-        while tb:
-            stack.append(tb)
-            tb = tb.tb_next
-
-        for tb in reversed(stack):
-            lineno = tb.tb_lineno
-
-            fname = tb.tb_frame.f_code.co_filename
-            if fname[0:1] == "<":
-                fglobals = tb.tb_frame.f_globals
-                if "__file__" in fglobals:
-                    fname = fglobals["__file__"]
-
-            print("  {0}:{1}".format(fname, lineno))
-
+    app = App()
+    app.run()
 
 
 if __name__ == "__main__":
