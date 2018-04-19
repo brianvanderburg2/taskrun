@@ -1,0 +1,9 @@
+# Hidden files except for those we want to keep
+.*
+!.gitignore
+
+# Python output files
+*.pyc
+*.pyo
+/dist/
+/*.egg-info
