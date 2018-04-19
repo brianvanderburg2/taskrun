@@ -446,6 +446,10 @@ class App(object):
         """ Run the application. """
         try:
             self.main()
+        except SystemExit:
+            raise
+        except KeyboardInterrupt:
+            pass
         except:
             (type, value, tb) = sys.exc_info()
             env = self.env
