@@ -175,16 +175,19 @@ class Environment(object):
         """ Return an escaped value for subst. """
         return self.subst(value, escape=True)
 
-    def task(self, name=None, once=False, **vars):
+    def task(self, name=None, once=False, extend=False, **vars):
         """ Decorator to register a task. """
-        # TODO: warning or error if same name already exists
         def wrapper(fn):
             if name is not None:
                 _name = name
             else:
                 _name = fn.__name__
 
-            self._tasks[_name] = Task(self, fn, once, vars)
+            entries = self._tasks.setdefault(_name, [])
+            if len(entries) and not extend:
+                raise Error("Task already defined: {0}".format(_name))
+
+            entries.append(Task(self, fn, once, vars))
 
             return fn
         return wrapper
@@ -192,17 +195,21 @@ class Environment(object):
     def calltask(self, name, **vars):
         """ Call a task object. """
         if name in self._tasks:
-            return self._tasks[name].execute(vars)
-        # TODO: error if calling a task that doesn't exist
+            for entry in self._tasks[name]:
+                entry.execute(vars)
+        else:
+            raise Error("No such task: {0}".format(name))
 
     def func(self, name=None):
         """ Decorator to register a function. """
-        # TODO: warn/error if same name already exists
         def wrapper(fn):
             if name is not None:
                 _name = name
             else:
                 _name = fn.__name__
+
+            if name in self._funcs:
+                raise Error("Function already defined: {0}".format(_name))
 
             self._funcs[_name] = fn
             return fn
@@ -210,9 +217,10 @@ class Environment(object):
 
     def callfunc(self, name, *args, **kwargs):
         """ Call a registered function. """
-        # TODO: error if calling a function that doesn't exist
         if name in self._funcs:
             return self._funcs[name](*args, **kwargs)
+        else:
+            raise Error("No such function: {0}".format(name))
 
     def include(self, *patterns):
         """ Include a file. """
@@ -298,8 +306,9 @@ class Environment(object):
     def errorln(self, message):
         self.error(message + "\n")
 
-    def abort(self, message):
-        self.errorln(message)
+    def abort(self, message=None):
+        if message is not None:
+            self.errorln(message)
         self.exit(-1)
 
     def exit(self, retcode=0):
@@ -314,22 +323,18 @@ class Task(object):
         self._fn = fn
         self._once = once
         self._vars = dict(args)
-
         self._called = False
-        self._result = None
 
     def execute(self, vars):
         if self._once and self._called:
-            return self._result
+            return
 
         with self._env:
             self._env.update(**self._vars)
             self._env.update(**vars)
 
-            self._result = self._fn()
+            self._fn()
             self._called = True
-
-        return self._result
 
 
 class App(object):
@@ -425,7 +430,8 @@ class App(object):
 
         # Load the task file
         env["TOP"] = os.path.dirname(self.taskfile)
-        env["CWD"] = self.cwd
+        env["ABSTOP"] = os.path.abspath(env["TOP"])
+        env["CWD"] = os.path.abspath(self.cwd)
         env._load(self.taskfile)
 
         # Print tasks list if requested
