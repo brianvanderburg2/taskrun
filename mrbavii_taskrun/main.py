@@ -43,8 +43,6 @@ class ShellError(CommandError):
 
 # Some types used in command scripts
 
-RunResult = collections.namedtuple("RunResult", ["stdout", "stderr", "retcode"])
-
 class Literal(object):
     """ Represent a literal value. """
 
@@ -53,6 +51,19 @@ class Literal(object):
 
     def __str__(self):
         return str(self._value)
+
+class RunResult(object):
+
+    def __init__(self, stdout, stderr, retcode, _result):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.retcode = retcode
+        self._result = _result
+
+    def __nonzero__(self):
+        return self._result
+
+    __bool__ = __nonzero__
 
 
 # Script objects for the program
@@ -241,7 +252,7 @@ class Environment(object):
             quite = bool(self.evaluate("TASKRUN_QUITE"))
 
         if not quite:
-            self.info(command)
+            self.outputln(command)
 
         # Run the command
         stdout = stderr = None
@@ -269,7 +280,8 @@ class Environment(object):
         return RunResult(
             stdout.decode() if stdout is not None else None,
             stderr.decode() if stderr is not None else None,
-            process.returncode
+            process.returncode,
+            bool(process.returncode in retvals)
         )
 
     def output(self, message):
@@ -438,7 +450,7 @@ class App(object):
             (type, value, tb) = sys.exc_info()
             env = self.env
 
-            env.error("{0}({1})".format(type.__name__, str(value)))
+            env.errorln("{0}({1})".format(type.__name__, str(value)))
             stack = []
             while tb:
                 stack.append(tb)
@@ -453,7 +465,7 @@ class App(object):
                     if "__file__" in fglobals:
                         fname = fglobals["__file__"]
 
-                env.error("  {0}:{1}".format(fname, lineno))
+                env.errorln("  {0}:{1}".format(fname, lineno))
             env.abort("Aborting due to errors.")
 
 
