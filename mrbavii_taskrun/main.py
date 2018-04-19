@@ -134,28 +134,35 @@ class Environment(object):
         """ Evaluate a variable. """
         return self.subst(self[variable])
 
-    def subst(self, value):
-        """ Perform string substitution based on environment variables. """
+    def subst(self, value, escape=False):
+        """ Perform string substitution based on environment variables or escape values. """
 
         if isinstance(value, Literal):
             return value._value
         elif isinstance(value, tuple):
-            return tuple(self.subst(i) for i in value)
+            return tuple(self.subst(i, escape) for i in value)
         elif isinstance(value, list):
-            return list(self.subst(i) for i in value)
+            return list(self.subst(i, escape) for i in value)
         elif isinstance(value, dict):
-            return {i: self.subst(value[i]) for i in value}
+            return {i: self.subst(value[i], escape) for i in value}
         elif isinstance(value, StringTypes):
-            def subfn(mo):
-                var = mo.group(0)
+            if escape:
+                return re.sub(r"\$", "$$", value)
+            else:
+                def subfn(mo):
+                    var = mo.group(0)
 
-                if var == "$$":
-                    return "$"
+                    if var == "$$":
+                        return "$"
 
-                return self.evaluate(var[2:-1])
-            return re.sub(r"\$\$|\$\(\w*?\)", subfn, value)
+                    return self.evaluate(var[2:-1])
+                return re.sub(r"\$\$|\$\(\w*?\)", subfn, value)
         else:
             return value
+
+    def escape(self, value):
+        """ Return an escaped value for subst. """
+        return self.subst(value, escape=True)
 
     def task(self, name=None, once=False, **vars):
         """ Decorator to register a task. """
@@ -171,13 +178,13 @@ class Environment(object):
             return fn
         return wrapper
 
-    def runtask(self, name, **vars):
+    def calltask(self, name, **vars):
         """ Call a task object. """
         if name in self._tasks:
             return self._tasks[name].execute(vars)
         # TODO: error if calling a task that doesn't exist
 
-    def function(self, name=None):
+    def func(self, name=None):
         """ Decorator to register a function. """
         # TODO: warn/error if same name already exists
         def wrapper(fn):
@@ -190,7 +197,7 @@ class Environment(object):
             return fn
         return wrapper
 
-    def call(self, name, *args, **kwargs):
+    def callfunc(self, name, *args, **kwargs):
         """ Call a registered function. """
         # TODO: error if calling a function that doesn't exist
         if name in self._funcs:
@@ -265,24 +272,23 @@ class Environment(object):
             process.returncode
         )
 
-    def output(self, message, handle=sys.stdout):
-        handle.write(message)
-        handle.flush()
+    def output(self, message):
+        sys.stdout.write(self.subst(message))
+        sys.stdout.flush()
 
-    def outputln(self, message, handle=sys.stdout):
-        handle.write(message)
-        handle.write("\n")
-        handle.flush()
-
-    def abort(self, message):
-        self.outputln(message, sys.stderr)
-        self.exit(-1)
+    def outputln(self, message):
+        self.output(message + "\n")
 
     def error(self, message):
-        self.outputln(message, sys.stderr)
+        sys.stderr.write(self.subst(message))
+        sys.stderr.flush()
 
-    def info(self, message):
-        self.outputln(message)
+    def errorln(self, message):
+        self.error(message + "\n")
+
+    def abort(self, message):
+        self.errorln(message)
+        self.exit(-1)
 
     def exit(self, retcode=0):
         sys.exit(retcode)
@@ -422,7 +428,7 @@ class App(object):
         env.update(**params)
 
         for (task, params) in tasks:
-            env.runtask(task, **params)
+            env.calltask(task, **params)
 
     def run(self):
         """ Run the application. """
