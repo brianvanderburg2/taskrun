@@ -235,7 +235,9 @@ class Environment(object):
 
     def capture(self, command, quite=None, abort=True, capture=STDOUT, retvals=(0,)):
         result = self.run(command, quite, abort, capture, retvals)
-        return result.stdout
+
+        return result.stderr if capture == self.STDERR else result.stdout
+
 
     def run(self, command, quite=None, abort=True, capture=NONE, retvals=(0,)):
         """ Run a command and return the results. """
