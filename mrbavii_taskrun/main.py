@@ -364,7 +364,10 @@ class App(object):
             "-l", "--list", dest="list", default=False,
             action="store_true", help="List tasks."
         )
-
+        parser.add_argument(
+            "-w", "--walk", dest="walk", default=False, action="store_true",
+            help="Wallk the directory tree to find the task file."
+        )
         parser.add_argument(
             "params", nargs="*",
             help="""Parameters in the form of <taskname>, <VAR>=<VALUE>, or
@@ -378,10 +381,14 @@ class App(object):
         filename = self.cmdline.file
         curdir = self.cmdline.dir
 
+        self.taskfile = None
         while True:
             taskfile = os.path.join(curdir, filename)
             if os.path.isfile(taskfile):
                 self.taskfile = taskfile
+                return
+
+            if not self.cmdline.walk:
                 return
 
             (head, _) = os.path.split(curdir)
@@ -390,7 +397,6 @@ class App(object):
             else:
                 break
 
-        self.taskfile = None
 
     def get_tasks_params(self):
         """ Return the tasks and parameters. """
