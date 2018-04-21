@@ -253,25 +253,28 @@ $(NAME)
 Variables
 =========
 
+Variables of the form _NAME_ should not be used as they may be declared as
+script variables in the future.
+
 The following variables are significant to the script.
 ------------------------------------------------------
 
-TOP
+_TOP_
     Specify the TOP directory, ie the directory where the taskfile was found
 ABSTOP
     The absolute path of the TOP directory
-CWD
+_CWD_
     Specify the current directory when the script is launched
 
-TASKRUN_QUITE
-    If set, this can be true or false to have the default quite value of
+_QUIET_
+    If set, this can be true or false to have the default quiet value of
     env.run and env.capture.  This is evaluated with substitution
 
-TASKRUN_SHELL
+_SHELL_
     If set, specify the shell for the script to use for env.run and env.capture.
     This is evaluated with substitution
 
-TASKRUN_SHELLENV
+_SHELLENV_
     When env.run and env.capture are executed, the current OS environment is
     passed to the shell. This variable can specify additional OS environment
     variables to pass to the shell or override, as a dictionary.  This is
@@ -282,9 +285,9 @@ Examples
 ========
 
 
-env["TASKRUN_SHELL"] = "/bin/bash"
-env["TASKRUN_SHELLENV"] = {"SHELLOPTS": "errexit:pipefail"}
-env["TASKRUN_QUITE"] = True
+env["_SHELL_"] = "/bin/bash"
+env["_SHELLENV_"] = {"SHELLOPTS": "errexit:pipefail"}
+env["_QUITE_"] = True
 env["DATE"] = env.capture("date -u +%Y%m%d")
 
 @env.task(once=True)
