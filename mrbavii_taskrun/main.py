@@ -83,6 +83,7 @@ class Environment(object):
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
+        self._verbose = False
 
     def _load(self, filename):
         """ Load the filename. """
@@ -96,7 +97,11 @@ class Environment(object):
         data["__file__"] = filename
 
         self._script_stack.append(filename)
+        if self._verbose:
+            self.errorln("Entering {0}".format(filename))
         exec(codeobj, data, data)
+        if self._verbose:
+            self.errorln("Leaving {0}".format(filename))
         self._script_stack.pop()
 
     def _get_script_globals(self):
@@ -369,6 +374,10 @@ class App(object):
             help="Wallk the directory tree to find the task file."
         )
         parser.add_argument(
+            "-v", "--verbose", dest="verbose", default=False, action="store_true",
+            help="Show verbose information."
+        )
+        parser.add_argument(
             "params", nargs="*",
             help="""Parameters in the form of <taskname>, <VAR>=<VALUE>, or
                   <taskname>:<VAR>=<VALUE>[<VAR>=<VALUE>...]"""
@@ -376,15 +385,25 @@ class App(object):
 
         self.cmdline = parser.parse_args()
 
+        # Process any needed arguments
+        self.env._verbose = self.cmdline.verbose
+
     def find_taskfile(self):
         """ Find the task file. """
         filename = self.cmdline.file
         curdir = self.cmdline.dir
 
+        if self.cmdline.verbose:
+            self.env.errorln("Taskrun search directory: {0}".format(curdir))
+            self.env.errorln("Taskrun search filename: {0}".format(filename))
+            self.env.errorln("Taskrun walk path: {0}".format(str(self.cmdline.walk)))
+
         self.taskfile = None
         while True:
             taskfile = os.path.join(curdir, filename)
             if os.path.isfile(taskfile):
+                if self.cmdline.verbose:
+                    self.env.errorln("Task file found: {0}".format(taskfile))
                 self.taskfile = taskfile
                 return
 
@@ -466,25 +485,36 @@ class App(object):
             pass
         except:
             (type, value, tb) = sys.exc_info()
-            env = self.env
+            self.dump_errors(type, value, tb, False)
 
-            env.errorln("{0}({1})".format(type.__name__, str(value)))
-            stack = []
-            while tb:
-                stack.append(tb)
-                tb = tb.tb_next
 
-            for tb in reversed(stack):
-                lineno = tb.tb_lineno
+    def dump_errors(self, type, value, tb, all):
+        env = self.env
 
-                fname = tb.tb_frame.f_code.co_filename
-                if fname[0:1] == "<":
-                    fglobals = tb.tb_frame.f_globals
-                    if "__file__" in fglobals:
-                        fname = fglobals["__file__"]
+        env.errorln("{0}({1})".format(type.__name__, str(value)))
+        stack = []
+        while tb:
+            stack.append(tb)
+            tb = tb.tb_next
 
+        for tb in reversed(stack):
+            lineno = tb.tb_lineno
+
+            fname = tb.tb_frame.f_code.co_filename
+            if fname[0:1] == "<":
+                fglobals = tb.tb_frame.f_globals
+                if "__file__" in fglobals:
+                    fname = fglobals["__file__"]
+
+            show = True
+            if not all and not self.cmdline.verbose and "mrbavii_taskrun" in fname and "main.py" in fname:
+                show = False
+
+
+            if show:
                 env.errorln("  {0}:{1}".format(fname, lineno))
-            env.abort("Aborting due to errors.")
+
+        env.abort("Aborting due to errors.")
 
 
 def main():
