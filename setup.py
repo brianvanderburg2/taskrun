@@ -10,14 +10,9 @@ setup(
     packages=find_packages(),
     zip_safe=False,
     install_package_data=True,
-    entry_points = {
+    entry_points={
         'console_scripts': [
             'mrbavii-taskrun = mrbavii_taskrun.main:main'
         ]
-    },
-    data_files=[
-        ("/etc/bash_completion.d", [
-            "files/mrbavii-taskrun.completion"
-        ])
-    ]
+    }
 )
