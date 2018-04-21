@@ -14,5 +14,10 @@ setup(
         'console_scripts': [
             'mrbavii-taskrun = mrbavii_taskrun.main:main'
         ]
-    }
+    },
+    data_files=[
+        ("/etc/bash_completion.d", [
+            "files/mrbavii-taskrun.completion"
+        ])
+    ]
 )
