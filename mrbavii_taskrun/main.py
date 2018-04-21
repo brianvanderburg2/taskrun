@@ -238,24 +238,24 @@ class Environment(object):
             for entry in sorted(glob.glob(fullglob)):
                 self._load(entry)
 
-    def capture(self, command, quite=None, abort=True, capture=STDOUT, retvals=(0,)):
-        result = self.run(command, quite, abort, capture, retvals)
+    def capture(self, command, quiet=None, abort=True, capture=STDOUT, retvals=(0,)):
+        result = self.run(command, quiet, abort, capture, retvals)
 
         return result.stderr if capture == self.STDERR else result.stdout
 
 
-    def run(self, command, quite=None, abort=True, capture=NONE, retvals=(0,)):
+    def run(self, command, quiet=None, abort=True, capture=NONE, retvals=(0,)):
         """ Run a command and return the results. """
 
         # Determine the shell to use
         shell = None
-        if "TASKRUN_SHELL" in self:
-            shell = self.evaluate("TASKRUN_SHELL")
+        if "_SHELL_" in self:
+            shell = self.evaluate("_SHELL_")
 
         # Determine any changes to the shell environment
         shellenv = dict(os.environ)
-        if "TASKRUN_SHELLENV" in self:
-            env = self.evaluate("TASKRUN_SHELLENV")
+        if "_SHELLENV_" in self:
+            env = self.evaluate("_SHELLENV_")
             if isinstance(env, dict):
                 for name in env:
                     shellenv[name] = env[name]
@@ -263,10 +263,10 @@ class Environment(object):
         # Print the command if needed
         command = self.subst(command)
 
-        if quite is None and "TASKRUN_QUITE" in self:
-            quite = bool(self.evaluate("TASKRUN_QUITE"))
+        if quiet is None and "_QUIET_" in self:
+            quiet = bool(self.evaluate("_QUIET_"))
 
-        if not quite:
+        if not quiet:
             self.outputln(command)
 
         # Run the command
@@ -459,9 +459,9 @@ class App(object):
         (tasks, params) = self.get_tasks_params()
         env.update(**params)
 
-        env["TOP"] = os.path.dirname(self.taskfile)
-        env["ABSTOP"] = os.path.abspath(env["TOP"])
-        env["CWD"] = os.path.abspath(self.cwd)
+        env["_TOP_"] = os.path.dirname(self.taskfile)
+        env["_ABSTOP_"] = os.path.abspath(env["_TOP_"])
+        env["_CWD_"] = os.path.abspath(self.cwd)
         env._load(self.taskfile)
 
         # Print tasks list if requested
