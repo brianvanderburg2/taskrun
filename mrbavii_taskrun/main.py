@@ -306,10 +306,10 @@ class Environment(object):
     def errorln(self, message):
         self.error(message + "\n")
 
-    def abort(self, message=None):
+    def abort(self, message=None, retcode=-1):
         if message is not None:
             self.errorln(message)
-        self.exit(-1)
+        self.exit(retcode)
 
     def exit(self, retcode=0):
         sys.exit(retcode)
@@ -428,7 +428,10 @@ class App(object):
         if self.taskfile is None:
             env.abort("Unable to find {0}".format(self.cmdline.file))
 
-        # Load the task file
+        # Set command line NAME=VALUE variables before loading the file
+        (tasks, params) = self.get_tasks_params()
+        env.update(**params)
+
         env["TOP"] = os.path.dirname(self.taskfile)
         env["ABSTOP"] = os.path.abspath(env["TOP"])
         env["CWD"] = os.path.abspath(self.cwd)
@@ -441,10 +444,7 @@ class App(object):
                     env.outputln(name)
             env.exit()
 
-        # Get the tasks and parameters from the cmdline and execute the tasks
-        (tasks, params) = self.get_tasks_params()
-        env.update(**params)
-
+        # Execute the requested tasks setting task specific variables
         for (task, params) in tasks:
             env.calltask(task, **params)
 
