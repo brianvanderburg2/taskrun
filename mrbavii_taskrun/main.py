@@ -52,6 +52,14 @@ class Literal(object):
     def __str__(self):
         return str(self._value)
 
+
+class Default(object):
+    """ Represent a default value that is not set if another is set. """
+
+    def __init__(self, value):
+        self._value = value
+
+
 class RunResult(object):
 
     def __init__(self, stdout, stderr, retcode, _result):
@@ -108,6 +116,7 @@ class Environment(object):
         return {
             "env": self,
             "Error": Error,
+            "Default": Default,
             "Literal": Literal
         }
 
@@ -122,7 +131,7 @@ class Environment(object):
     def push(self, **vars):
         """ Save the variable stack. """
         self._variable_stack.append(dict(self._variables))
-        self._variables.update(vars)
+        self.update(**vars)
 
     def pop(self):
         """ Restore the variable stack. """
@@ -130,7 +139,12 @@ class Environment(object):
 
     def __setitem__(self, name, value):
         """ Set a variable value. """
-        self._variables[name] = value
+        if isinstance(value, Default):
+            # Set variable only if not already set
+            if name not in self._variables:
+                self._variables[name] = value._value
+        else:
+            self._variables[name] = value
 
     def __getitem__(self, name):
         """ Get a variable value. """
@@ -144,7 +158,9 @@ class Environment(object):
         return name in self._variables
 
     def update(self, **vars):
-        self._variables.update(vars)
+        """ Update variables of the environment. """
+        for name in vars:
+            self[name] = vars[name]
 
     def evaluate(self, variable):
         """ Evaluate a variable. """
