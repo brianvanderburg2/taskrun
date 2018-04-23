@@ -196,7 +196,7 @@ class Environment(object):
         """ Return an escaped value for subst. """
         return self.subst(value, escape=True)
 
-    def task(self, name=None, once=False, extend=False, **vars):
+    def task(self, name=None, once=True, extend=False, **vars):
         """ Decorator to register a task. """
         def wrapper(fn):
             if name is not None:
