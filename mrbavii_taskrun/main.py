@@ -196,7 +196,7 @@ class Environment(object):
         """ Return an escaped value for subst. """
         return self.subst(value, escape=True)
 
-    def task(self, name=None, once=True, extend=False, **vars):
+    def task(self, name=None, extend=False, once=True, depends=None, **vars):
         """ Decorator to register a task. """
         def wrapper(fn):
             if name is not None:
@@ -208,7 +208,7 @@ class Environment(object):
             if len(entries) and not extend:
                 raise Error("Task already defined: {0}".format(_name))
 
-            entries.append(Task(self, fn, once, vars))
+            entries.append(Task(self, fn, once, depends, vars))
 
             return fn
         return wrapper
@@ -341,12 +341,19 @@ class Environment(object):
 class Task(object):
     """ Represent a task to be called. """
 
-    def __init__(self, env, fn, once, args):
+    def __init__(self, env, fn, once, depends, args):
         self._env = env
         self._fn = fn
         self._once = once
         self._vars = dict(args)
         self._called = False
+
+        if isinstance(depends, (tuple, list)):
+            self._depends = tuple(depends)
+        elif isinstance(depends, StringTypes):
+            self._depends = (depends,)
+        else:
+            self._depends = ()
 
     def execute(self, vars):
         if self._once and self._called:
@@ -355,6 +362,9 @@ class Task(object):
         with self._env:
             self._env.update(**self._vars)
             self._env.update(**vars)
+
+            for depends in self._depends:
+                self._env.calltask(depends)
 
             self._fn()
             self._called = True

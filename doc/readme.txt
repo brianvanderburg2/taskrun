@@ -62,7 +62,11 @@ the variables will be saved and restored once the context exits.
 env[name] = value
 -----------------
 
-Set a variable in the environment
+Set a variable in the environment. If the variable is an instance of Default,
+then the value will only be set if a value has not already been set.  This
+allows for specifying default values which can be set from the outside:
+
+    env[name] = Default(value)
 
 
 env[name]
@@ -104,7 +108,7 @@ Escape a value so that substitution returns the orginal value.
 
 
 
-@env.task(name=None, once=False, extend=False, **vars)
+@env.task(name=None, extend=False, once=True, depends=None, **vars)
 ------------------------------------------------------
 
 Declare the next function to be a task.  The function takes no arguments
@@ -113,17 +117,23 @@ and the return value of the function is ignored.
 Parameters:
     name
         The name of the task. If not specified, use the function name
-    once
-        Specify the function to only be executed once even if the task
-        is called more than once
     extend
         Each named task is actually a list of functions. By default env.task
-        will raise an error if already defined. Setting this to try will add
-        the function to the list in the named task.  The functions are executed
+        will raise an error if already defined. Setting this will append
+        the function to the lists in the named task.  The functions are executed
         in the order they are specified when the task is executed.  In addition
         each function's "once" parameter is unique to itself, so one function
         of a named task may have once set to True while another function of the
-        same task may have once st to False.
+        same task may have once set to False.
+    once
+        Specify the function to only be executed once even if the task
+        is called more than once.  True by default.
+    depends
+        Can the the name of another task or a list of task names that should
+        be called before this task's function is executed.  The called task
+        will have the same environment set as the current task.  However,
+        as the task is preserved, changed made to the environment in the called
+        task will not be visible in the current task.
     **vars
         Additional name=value parameters specify variables to be set when the
         task is called.  These will override variables set outside the task
@@ -290,14 +300,14 @@ env["_SHELLENV_"] = {"SHELLOPTS": "errexit:pipefail"}
 env["_QUITE_"] = True
 env["DATE"] = env.capture("date -u +%Y%m%d")
 
-@env.task(once=True)
+@env.task()
 def welcome():
     env.outputln("Starting now...")
 
-@env.task(extend=True)
+@env.task(extend=True, once=False)
 def welcome():
-    if "NAME" in env:
-        env.outputln("Performing task...$(NAME)")
+    env["NAME"] = Default("unknown")
+    env.outputln("Performing operation ... $(NAME)")
 
 
 @env.task()
