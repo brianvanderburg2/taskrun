@@ -499,12 +499,16 @@ class App(object):
                 for taskparam in parts[1:]:
                     if "=" in taskparam:
                         (name, value) = taskparam.split("=", 1)
+                        if name[:1] == "_" and name[-1:] == "_":
+                            raise Error("Setting special _VARIABLES_ from command line not allowed")
                         taskparams[name] = value
 
                 tasks.append((parts[0], taskparams))
             elif "=" in cmdparam:
                 # NAME=VALUE
                 (name, value) = cmdparam.split("=", 1)
+                if name[:1] == "_" and name[-1:] == "_":
+                    raise Error("Setting special _VARIABLES_ from command line not allowed")
                 params[name] = value
             else:
                 # taskname
