@@ -188,18 +188,22 @@ class Environment(object):
                 # Apply variable filters
                 parts=var[2:-1].split("|")
                 value = self.evaluate(parts[0])
-                for part in parts[1:]:
-                    if part in self._filters:
-                        value = self._filters[part](value)
-                    else:
-                        raise Error("No such filter: {0}".format(part))
 
-                # Apply passed in filter if specified
-                if filter:
-                    value = filter(value)
+                if len(parts) > 1:
+                    # Filters supplied directly
+                    for part in parts[1:]:
+                        if len(part) == 0:
+                            # Empty filter can be used to disable auto filter
+                            continue
+                        else:
+                            value = self.callfilter(part, value)
+                elif filter:
+                    # Use auto-filter if specified
+                    for part in filter.split("|"):
+                        value = self.callfilter(part, value)
 
                 return value
-            return re.sub(r"\$\$|\$\([\w|]*?\)", subfn, value)
+            return re.sub(r"\$\$|\$\(.*?\)", subfn, value)
         else:
             return value
 
@@ -247,6 +251,13 @@ class Environment(object):
             return fn
         return wrapper
 
+    def callfunc(self, name, *args, **kwargs):
+        """ Call a registered function. """
+        if name in self._funcs:
+            return self._funcs[name](*args, **kwargs)
+        else:
+            raise Error("No such function: {0}".format(name))
+
     def filter(self, name=None):
         """ Decorator to register a filter. """
         def wrapper(fn):
@@ -262,12 +273,12 @@ class Environment(object):
             return fn
         return wrapper
 
-    def callfunc(self, name, *args, **kwargs):
-        """ Call a registered function. """
-        if name in self._funcs:
-            return self._funcs[name](*args, **kwargs)
+    def callfilter(self, name, value):
+        """ Call a filter with a value. """
+        if name in self._filters:
+            return self._filters[name](value)
         else:
-            raise Error("No such function: {0}".format(name))
+            raise Error("No such filter: {0}".format(name))
 
     def include(self, *patterns):
         """ Include a file. """
@@ -305,8 +316,6 @@ class Environment(object):
         # Determine if using a shell filter
         if filter and "_SHELLFILTER_" in self:
             filter = self.evaluate("_SHELLFILTER_")
-            if not callable(filter):
-                raise CommandError("_SHELLFILTER_ must be callable")
         else:
             filter = None
 
