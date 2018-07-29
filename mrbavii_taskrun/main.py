@@ -167,48 +167,45 @@ class Environment(object):
         """ Evaluate a variable. """
         return self.subst(self[variable])
 
-    def subst(self, value, escape=False, filter=None):
+    def subst(self, value, filter=None):
         """ Perform string substitution based on environment variables or escape values. """
 
         if isinstance(value, Literal):
             return value._value
         elif isinstance(value, tuple):
-            return tuple(self.subst(i, escape) for i in value)
+            return tuple(self.subst(i, filter) for i in value)
         elif isinstance(value, list):
-            return list(self.subst(i, escape) for i in value)
+            return list(self.subst(i, filter) for i in value)
         elif isinstance(value, dict):
-            return {i: self.subst(value[i], escape) for i in value}
+            return {i: self.subst(value[i], filter) for i in value}
         elif isinstance(value, StringTypes):
-            if escape:
-                return re.sub(r"\$", "$$", value)
-            else:
-                def subfn(mo):
-                    var = mo.group(0)
+            def subfn(mo):
+                var = mo.group(0)
 
-                    if var == "$$":
-                        return "$"
+                if var == "$$":
+                    return "$"
 
-                    # Apply variable filters
-                    parts=var[2:-1].split("|")
-                    value = self.evaluate(parts[0])
-                    for part in parts[1:]:
-                        if part in self._filters:
-                            value = self._filters[part](value)
-                        else:
-                            raise Error("No such filter: {0}".format(part))
+                # Apply variable filters
+                parts=var[2:-1].split("|")
+                value = self.evaluate(parts[0])
+                for part in parts[1:]:
+                    if part in self._filters:
+                        value = self._filters[part](value)
+                    else:
+                        raise Error("No such filter: {0}".format(part))
 
-                    # Apply passed in filter if specified
-                    if filter:
-                        value = filter(value)
+                # Apply passed in filter if specified
+                if filter:
+                    value = filter(value)
 
-                    return value
-                return re.sub(r"\$\$|\$\([\w|]*?\)", subfn, value)
+                return value
+            return re.sub(r"\$\$|\$\([\w|]*?\)", subfn, value)
         else:
             return value
 
     def escape(self, value):
-        """ Return an escaped value for subst. """
-        return self.subst(value, escape=True)
+        """ Escape a string so subst will return the original value. """
+        return re.sub(r"\$", "$$", value)
 
     def task(self, name=None, extend=False, once=True, depends=None, **vars):
         """ Decorator to register a task. """
