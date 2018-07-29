@@ -244,7 +244,7 @@ class Environment(object):
             else:
                 _name = fn.__name__
 
-            if name in self._funcs:
+            if _name in self._funcs:
                 raise Error("Function already defined: {0}".format(_name))
 
             self._funcs[_name] = fn
@@ -266,7 +266,7 @@ class Environment(object):
             else:
                 _name = fn.__name__
 
-            if name in self._filters:
+            if _name in self._filters:
                 raise Error("Filter already defined: {0}".format(_name))
 
             self._filters[_name] = fn
