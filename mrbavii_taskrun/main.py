@@ -167,7 +167,7 @@ class Environment(object):
         """ Evaluate a variable. """
         return self.subst(self[variable])
 
-    def subst(self, value, escape=False):
+    def subst(self, value, escape=False, filter=None):
         """ Perform string substitution based on environment variables or escape values. """
 
         if isinstance(value, Literal):
@@ -188,13 +188,18 @@ class Environment(object):
                     if var == "$$":
                         return "$"
 
+                    # Apply variable filters
                     parts=var[2:-1].split("|")
                     value = self.evaluate(parts[0])
-                    for filter in parts[1:]:
-                        if filter in self._filters:
-                            value = self._filters[filter](value)
+                    for part in parts[1:]:
+                        if part in self._filters:
+                            value = self._filters[part](value)
                         else:
-                            raise Error("No such filter: {0}".format(filter))
+                            raise Error("No such filter: {0}".format(part))
+
+                    # Apply passed in filter if specified
+                    if filter:
+                        value = filter(value)
 
                     return value
                 return re.sub(r"\$\$|\$\([\w|]*?\)", subfn, value)
@@ -284,7 +289,7 @@ class Environment(object):
         return result.stderr if capture == self.STDERR else result.stdout
 
 
-    def run(self, command, quiet=None, abort=True, capture=NONE, retvals=(0,)):
+    def run(self, command, quiet=None, abort=True, capture=NONE, retvals=(0,), filter=True):
         """ Run a command and return the results. """
 
         # Determine the shell to use
@@ -300,8 +305,16 @@ class Environment(object):
                 for name in env:
                     shellenv[name] = env[name]
 
+        # Determine if using a shell filter
+        if filter and "_SHELLFILTER_" in self:
+            filter = self.evaluate("_SHELLFILTER_")
+            if not callable(filter):
+                raise CommandError("_SHELLFILTER_ must be callable")
+        else:
+            filter = None
+
         # Print the command if needed
-        command = self.subst(command)
+        command = self.subst(command, filter=filter)
 
         if quiet is None and "_QUIET_" in self:
             quiet = bool(self.evaluate("_QUIET_"))
