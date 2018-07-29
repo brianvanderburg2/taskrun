@@ -88,6 +88,7 @@ class Environment(object):
         """ Initialize  the environmnet. """
         self._tasks = {}
         self._funcs = {}
+        self._filters = {}
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
@@ -187,8 +188,16 @@ class Environment(object):
                     if var == "$$":
                         return "$"
 
-                    return self.evaluate(var[2:-1])
-                return re.sub(r"\$\$|\$\(\w*?\)", subfn, value)
+                    parts=var[2:-1].split("|")
+                    value = self.evaluate(parts[0])
+                    for filter in parts[1:]:
+                        if filter in self._filters:
+                            value = self._filters[filter](value)
+                        else:
+                            raise Error("No such filter: {0}".format(filter))
+
+                    return value
+                return re.sub(r"\$\$|\$\([\w|]*?\)", subfn, value)
         else:
             return value
 
@@ -233,6 +242,21 @@ class Environment(object):
                 raise Error("Function already defined: {0}".format(_name))
 
             self._funcs[_name] = fn
+            return fn
+        return wrapper
+
+    def filter(self, name=None):
+        """ Decorator to register a filter. """
+        def wrapper(fn):
+            if name is not None:
+                _name = name
+            else:
+                _name = fn.__name__
+
+            if name in self._filters:
+                raise Error("Filter already defined: {0}".format(_name))
+
+            self._filters[_name] = fn
             return fn
         return wrapper
 
