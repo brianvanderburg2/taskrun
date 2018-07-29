@@ -92,7 +92,7 @@ class Environment(object):
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
-        self._verbose = False
+        self._verbose = []
 
     def _load(self, filename):
         """ Load the filename. """
@@ -106,10 +106,10 @@ class Environment(object):
         data["__file__"] = filename
 
         self._script_stack.append(filename)
-        if self._verbose:
+        if "load" in self._verbose:
             self.errorln("Entering {0}".format(filename))
         exec(codeobj, data, data)
-        if self._verbose:
+        if "load" in self._verbose:
             self.errorln("Leaving {0}".format(filename))
         self._script_stack.pop()
 
@@ -325,7 +325,7 @@ class Environment(object):
         if quiet is None and "_QUIET_" in self:
             quiet = bool(self.evaluate("_QUIET_"))
 
-        if not quiet:
+        if not quiet or "run" in self._verbose:
             self.outputln(command)
 
         # Run the command
@@ -443,7 +443,8 @@ class App(object):
             help="Wallk the directory tree to find the task file."
         )
         parser.add_argument(
-            "-v", "--verbose", dest="verbose", default=False, action="store_true",
+            "-v", "--verbose", dest="verbose", default=[], action="append",
+            choices=["load", "error", "run"],
             help="Show verbose information."
         )
         parser.add_argument(
@@ -451,6 +452,7 @@ class App(object):
             help="""Parameters in the form of <taskname>, <VAR>=<VALUE>, or
                   <taskname>:<VAR>=<VALUE>[<VAR>=<VALUE>...]"""
         )
+
 
         self.cmdline = parser.parse_args()
 
@@ -462,7 +464,7 @@ class App(object):
         filename = self.cmdline.file
         curdir = self.cmdline.dir
 
-        if self.cmdline.verbose:
+        if "load" in self.cmdline.verbose:
             self.env.errorln("Taskrun search directory: {0}".format(curdir))
             self.env.errorln("Taskrun search filename: {0}".format(filename))
             self.env.errorln("Taskrun walk path: {0}".format(str(self.cmdline.walk)))
@@ -471,7 +473,7 @@ class App(object):
         while True:
             taskfile = os.path.join(curdir, filename)
             if os.path.isfile(taskfile):
-                if self.cmdline.verbose:
+                if "load" in self.cmdline.verbose:
                     self.env.errorln("Task file found: {0}".format(taskfile))
                 self.taskfile = taskfile
                 return
@@ -580,7 +582,7 @@ class App(object):
                     fname = fglobals["__file__"]
 
             show = True
-            if not all and not self.cmdline.verbose and "mrbavii_taskrun" in fname and "main.py" in fname:
+            if not all and not "error" in self.cmdline.verbose and "mrbavii_taskrun" in fname and "main.py" in fname:
                 show = False
 
 
