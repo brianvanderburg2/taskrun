@@ -326,7 +326,8 @@ class Environment(object):
             quiet = bool(self.evaluate("_QUIET_"))
 
         if not quiet or "run" in self._verbose:
-            self.outputln(command)
+            # Make it literal since outputln also calls env.subst
+            self.outputln(Literal(command))
 
         # Run the command
         stdout = stderr = None
@@ -363,14 +364,18 @@ class Environment(object):
         sys.stdout.flush()
 
     def outputln(self, message):
-        self.output(message + "\n")
+        # Call twice instead of concat since message may be any subst-able value
+        self.output(message)
+        self.output("\n")
 
     def error(self, message):
         sys.stderr.write(self.subst(message))
         sys.stderr.flush()
 
     def errorln(self, message):
-        self.error(message + "\n")
+        # Call twice instead of concat since message may be any subst-able value
+        self.error(message)
+        self.error("\n")
 
     def abort(self, message=None, retcode=-1):
         if message is not None:
