@@ -60,6 +60,13 @@ class Default(object):
         self._value = value
 
 
+class Delete(object):
+    """ A variable which, when assigned, will actually delete the variable. """
+
+    def __init__(self):
+        pass
+
+
 class RunResult(object):
 
     def __init__(self, stdout, stderr, retcode, _result):
@@ -118,7 +125,8 @@ class Environment(object):
             "env": self,
             "Error": Error,
             "Default": Default,
-            "Literal": Literal
+            "Literal": Literal,
+            "Delete": Delete
         }
 
     def __enter__(self):
@@ -140,7 +148,10 @@ class Environment(object):
 
     def __setitem__(self, name, value):
         """ Set a variable value. """
-        if isinstance(value, Default):
+        if isinstance(value, Delete):
+            # Delete the variable
+            self._variables.pop(name, None)
+        elif isinstance(value, Default):
             # Set variable only if not already set
             if name not in self._variables:
                 self._variables[name] = value._value
@@ -161,6 +172,7 @@ class Environment(object):
     def update(self, **vars):
         """ Update variables of the environment. """
         for name in vars:
+            # Use __setitem__ for all effects
             self[name] = vars[name]
 
     def evaluate(self, variable):
@@ -408,6 +420,7 @@ class Task(object):
             return
 
         with self._env:
+            # Update our vars first, then passed vars
             self._env.update(**self._vars)
             self._env.update(**vars)
 
