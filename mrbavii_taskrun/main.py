@@ -66,6 +66,19 @@ class Delete(object):
     def __init__(self):
         pass
 
+class NoChange(object):
+    """ A variable which, when assigned to the env, will not change the current variable value. """
+
+    def __init__(self):
+        pass
+
+class Description(object):
+    """ A variable which provides a description and value. """
+
+    def __init__(self, desc, value=NoChange()):
+        self._desc = desc
+        self._value = value
+
 
 class RunResult(object):
 
@@ -100,6 +113,8 @@ class Environment(object):
         self._variable_stack = []
         self._script_stack = []
         self._verbose = []
+        self._task_map = {}
+        self._var_desc = {}
 
     def _load(self, filename):
         """ Load the filename. """
@@ -126,7 +141,9 @@ class Environment(object):
             "Error": Error,
             "Default": Default,
             "Literal": Literal,
-            "Delete": Delete
+            "Delete": Delete,
+            "NoChange": NoChange,
+            "Description": Description
         }
 
     def __enter__(self):
@@ -154,7 +171,12 @@ class Environment(object):
         elif isinstance(value, Default):
             # Set variable only if not already set
             if name not in self._variables:
-                self._variables[name] = value._value
+                self[name] = value._value
+        elif isinstance(value, NoChange):
+            pass
+        elif isinstance(value, Description):
+            self._var_desc[name] = value._desc
+            self[name] = value._value
         else:
             self._variables[name] = value
 
@@ -198,7 +220,7 @@ class Environment(object):
                     return "$"
 
                 # Apply variable filters
-                parts=var[2:-1].split("|")
+                parts = var[2:-1].split("|")
                 value = self.evaluate(parts[0])
 
                 if len(parts) > 1:
@@ -235,8 +257,32 @@ class Environment(object):
             if len(entries) and not extend:
                 raise Error("Task already defined: {0}".format(_name))
 
-            entries.append(Task(self, fn, once, depends, vars))
+            newtask = Task(self, fn, once, depends, vars)
 
+            if fn.__doc__:
+                newtask._desc = fn.__doc__.strip()
+
+            self._task_map[fn] = newtask
+            entries.append(newtask)
+
+            return fn
+        return wrapper
+
+    def taskdesc(self, desc):
+        """ Function to add a task desc message. """
+        def wrapper(fn):
+            task = self._task_map[fn]
+            task._desc = desc
+            return fn
+        return wrapper
+
+    def taskvar(self, var, desc, default=None):
+        """ Function to add description to a task variable. """
+        def wrapper(fn):
+            task = self._task_map[fn]
+            task._var_desc[var] = desc
+            if default is not None:
+                task._vars[var] = default
             return fn
         return wrapper
 
@@ -407,6 +453,8 @@ class Task(object):
         self._once = once
         self._vars = dict(args)
         self._called = False
+        self._desc = None
+        self._var_desc = dict()
 
         if isinstance(depends, (tuple, list)):
             self._depends = tuple(depends)
@@ -462,9 +510,17 @@ class App(object):
         )
         parser.add_argument(
             "-v", "--verbose", dest="verbose", default=[], action="append",
-            choices=["load", "error", "run"],
+            choices=["load", "error", "run", "var"],
             help="Show verbose information."
         )
+        parser.add_argument(
+            "-V", dest="varhelp", default=False, action="store_true",
+            help="Show variable-related help.")
+
+        parser.add_argument(
+            "-H", dest="taskhelp", default=False, action="store_true",
+            help="Show task-related help.")
+
         parser.add_argument(
             "params", nargs="*",
             help="""Parameters in the form of <taskname>, <VAR>=<VALUE>, or
@@ -564,9 +620,61 @@ class App(object):
                     env.outputln(name)
             env.exit()
 
+        # Print var/task help if requested
+        if self.cmdline.varhelp:
+            self.show_varhelp()
+
+        if self.cmdline.taskhelp:
+            names = sorted(set([i[0] for i in tasks]))
+            self.show_taskhelp(names)
+
+        if self.cmdline.taskhelp or self.cmdline.varhelp:
+            env.exit()
+
         # Execute the requested tasks setting task specific variables
         for (task, params) in tasks:
             env.calltask(task, **params)
+
+    def show_varhelp(self):
+        """ Show variable help. """
+
+        env = self.env
+
+        for var in sorted(env._var_desc):
+            env.outputln("Var: {0}".format(var))
+            env.outputln(" Desc: {0}".format(env._var_desc[var]))
+            if "var" in self.cmdline.verbose:
+                if var in env:
+                    env.outputln(" Current Value: {0}".format(env[var]))
+                else:
+                    env.outputln(" Currently unset")
+
+    def show_taskhelp(self, tasks):
+        """ Show task help. """
+
+        env = self.env
+
+        if not tasks:
+            tasks = sorted(env._tasks)
+
+        for name in tasks:
+            taskobj = env._tasks.get(name, None)
+            if taskobj is None:
+                raise Error("No such task: {0}".format(name))
+
+            env.outputln("Task: {0}".format(name))
+            for (entry_num, entry) in enumerate(taskobj):
+                env.outputln(" Entry: {0}".format(entry_num))
+                if entry._desc is not None:
+                    env.outputln("  Desc: {0}".format(entry._desc))
+                for var in entry._var_desc:
+                    env.outputln("  Var: {0}".format(var))
+                    env.outputln("   Desc: {0}".format(entry._var_desc[var]))
+                    if "var" in self.cmdline.verbose:
+                        if var in env:
+                            env.outputln("   Current value: {0}".format(env[var]))
+                        else:
+                            env.outputln("   Currently unset")
 
     def run(self):
         """ Run the application. """
