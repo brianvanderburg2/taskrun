@@ -496,10 +496,21 @@ class App(object):
             "-f", "--file", dest="file", default="TaskFile",
             help="Specify an alternative name for TaskFile."
         )
-        parser.add_argument(
+
+        group = parser.add_mutually_exclusive_group(required=False)
+        group.add_argument(
             "-d", "--dir", dest="dir", default=os.getcwd(),
             help="Specify a starting directory."
         )
+        group.add_argument(
+            "-s", "--system", dest="dir_system", action="store_true", default=False,
+            help="Use the system taskfile directory."
+        )
+        group.add_argument(
+            "-u", "--user", dest="dir_user", action="store_true", default=False,
+            help="Use the user taskfile directory."
+        )
+
         parser.add_argument(
             "-l", "--list", dest="list", default=False,
             action="store_true", help="List tasks."
@@ -532,6 +543,13 @@ class App(object):
 
         # Process any needed arguments
         self.env._verbose = self.cmdline.verbose
+
+        # TODO: need more system-specific way to do this, perhaps should
+        # depend on and use code from mrbaviirc.common
+        if self.cmdline.dir_user:
+            self.cmdline.dir = os.path.expanduser("~/.config/mrbavii-taskrun")
+        elif self.cmdline.dir_system:
+            self.cmdline.dir = "/etc/mrbavii-taskrun"
 
     def find_taskfile(self):
         """ Find the task file. """
