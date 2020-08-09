@@ -16,13 +16,31 @@ Usage
 
 mrbavii-taskrun [-d dir] [-f file] [params] [tasks]
 
--d dir
+-d dir, --dir dir
     Specify the directory to search for the task file. By default walk
     up the directory tree until the task file is found
 
--f file
+-f file, --file file
     Specify an alternative name for the task file.  By default the task file
     is expected to be named "TaskFile"
+
+-s, --system
+    Specify to use the system taskfile directory
+
+-u, --user
+    Specify to use the user taskfile directory
+
+-w, --walk
+    Specify to walk the directory tree to find the task file
+
+-v <level>
+    Specify a verbose level. Level can be load, error, run, var
+
+-V
+    Show variable-related help
+
+-H
+    Show task-related help
 
 params: NAME=VALUE
     Specify main variables to be set when the task file is loaded
@@ -62,12 +80,38 @@ the variables will be saved and restored once the context exits.
 env[name] = value
 -----------------
 
-Set a variable in the environment. If the variable is an instance of Default,
-then the value will only be set if a value has not already been set.  This
-allows for specifying default values which can be set from the outside:
+Set a variable in the environment.  Several special forms exist:
 
-    env[name] = Default(value)
+env[name] = Default(value)
 
+    Set a variable if it is not already set, or if it is already set but was
+    not specified as a top-level parameter on the command line.  This allows
+    one default to be set but then to be overriden by another default later.
+
+env[name] = IfNotSet(value)
+
+    Set the variable if it is not already set.
+
+env[name] = Delete()
+
+    Delete a variable.  This is intended to be passed as defaults to a task
+    to allow for the removal of a variable from the task.
+
+    @env.task(USER=Delete())
+    def task():
+        env["USER"] = IfNotSet("foobar")
+
+    This would require the USER variable to be set as a task-level variable:
+
+    taskrun USER=test task -- The USER variable in the task is foobar
+
+    taskrun task:USER=test -- The USER variable in the task is test
+
+env[name] = Description("...", value)
+
+    Set a description on a variable to be displayed with the variable-related
+    help. The value is applied recursively so can be any of the above types
+    as well.
 
 env[name]
 ---------
@@ -93,12 +137,16 @@ env.evaluate(name)
 Evaluate a variable from the environment including any substitutions
 
 
-env.subst(value)
-----------------
+env.subst(value, filter=None)
+-----------------------------
 
 Perform substitutions on a value.  Lists will have their values substituded,
 dictionary value (but not keys) will be substituded, and strings will be
 substituted.  Other values will be left as is.
+
+By default, a string will not have any filters applied to the substituted
+values.  One or more filter names may be passed, separated by "|" to the filter
+method.
 
 
 env.escape(value)
@@ -180,6 +228,14 @@ Returns:
     The return value of the taskfile function
 
 
+@env.filter(name=None)
+----------------------
+Declare the next function to be a filter of the specified name.
+
+env.callfilter(name, value)
+---------------------------
+Apply the filter to the given value
+
 env.include(*patterns)
 ----------------------
 
@@ -194,7 +250,9 @@ env.capture(command, quite=None, abort=True, capture=env.STDOUT, retvals=[0])
 -----------------------------------------------------------------------------
 
 Substitution is performed on the command and then the command is executed.
-If quite is None, then the environment variable "TASKRUN_QUITE" is used,
+If the shell variable "_SHELLFILTER_" is specified, then it specifies one or
+more filters which are applied to any subsitution variables, separated by "|".
+If quite is None, then the environment variable "_QUIET_" is used,
 otherwise the value is use, to determine if the command is printed before
 running.  The output to capture can be specified, and the list of return
 expected return values.  If an unexpected return value occurs, and abort is
@@ -289,6 +347,20 @@ _SHELLENV_
     passed to the shell. This variable can specify additional OS environment
     variables to pass to the shell or override, as a dictionary.  This is
     evaluated with substitution.
+
+_SHELLFILTER_
+    A "|" separated list of filter names to apply to substitutions by default.
+    This is only used by env.capture adn env.run.  Within a string, a forced
+    filter can be specified by appending the filters to the variable:
+
+        "$(NAME|esc|flatten")
+
+    Filters can be disabled by appending an empty filter list:
+
+        "$(NAME|)"
+
+    If neither of these are used, then the filters specified by this variable
+    are applied from the capture and run methods.
 
 
 Examples

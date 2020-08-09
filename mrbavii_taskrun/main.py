@@ -53,12 +53,19 @@ class Literal(object):
         return str(self._value)
 
 
-class Default(object):
-    """ Represent a default value that is not set if another is set. """
+class IfNotSet(object):
+    """ Represent a value that is not set if another is set. """
 
     def __init__(self, value):
         self._value = value
 
+class Default(object):
+    """ Represent a default value that is set if not specified via command line.
+        Note this only checks the top level variables not task variables.
+    """
+
+    def __init__(self, value):
+        self._value = value
 
 class Delete(object):
     """ A variable which, when assigned, will actually delete the variable. """
@@ -109,6 +116,7 @@ class Environment(object):
         self._tasks = {}
         self._funcs = {}
         self._filters = {}
+        self._variables_cmdline = ()
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
@@ -139,6 +147,7 @@ class Environment(object):
         return {
             "env": self,
             "Error": Error,
+            "IfNotSet": IfNotSet,
             "Default": Default,
             "Literal": Literal,
             "Delete": Delete,
@@ -168,9 +177,14 @@ class Environment(object):
         if isinstance(value, Delete):
             # Delete the variable
             self._variables.pop(name, None)
-        elif isinstance(value, Default):
-            # Set variable only if not already set
+        elif isinstance(value, IfNotSet):
+            # Set if not already set
             if name not in self._variables:
+                self[name] = value._value
+        elif isinstance(value, Default):
+            # Set if not set or if set but not from command line
+            # (This allows one Default to override another Default)
+            if name not in self._variables or name not in self._variables_cmdline:
                 self[name] = value._value
         elif isinstance(value, NoChange):
             pass
@@ -624,6 +638,7 @@ class App(object):
 
         # Set command line NAME=VALUE variables before loading the file
         (tasks, params) = self.get_tasks_params()
+        env._variables_cmdline = tuple(params.keys()) # remmeber which variables were passed
         env.update(**params)
 
         env["_TOP_"] = os.path.dirname(self.taskfile)
