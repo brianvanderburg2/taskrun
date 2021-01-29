@@ -1,18 +1,17 @@
-from setuptools import setup, find_packages
+#!/usr/bin/env python3
+
+from setuptools import setup, find_namespace_packages
 
 setup(
-    name='mrbavii_taskrun',
+    name='mrbavii.taskrun',
     version='0.0',
     description='A simple python-based task runner',
     url='',
     author='Brian Allen Vanderburg II',
-    license='MIT',
-    packages=find_packages(),
-    zip_safe=False,
-    install_package_data=True,
+    packages=find_namespace_packages(),
     entry_points={
         'console_scripts': [
-            'mrbavii-taskrun = mrbavii_taskrun.main:main'
+            'mrbavii-taskrun = mrbavii.taskrun.main:main'
         ]
     }
 )

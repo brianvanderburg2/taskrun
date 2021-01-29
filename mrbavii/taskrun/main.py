@@ -53,12 +53,6 @@ class Literal(object):
         return str(self._value)
 
 
-class IfNotSet(object):
-    """ Represent a value that is not set if another is set. """
-
-    def __init__(self, value):
-        self._value = value
-
 class Default(object):
     """ Represent a default value that is set if not specified via command line.
         Note this only checks the top level variables not task variables.
@@ -67,17 +61,20 @@ class Default(object):
     def __init__(self, value):
         self._value = value
 
+
 class Delete(object):
     """ A variable which, when assigned, will actually delete the variable. """
 
     def __init__(self):
         pass
 
+
 class NoChange(object):
     """ A variable which, when assigned to the env, will not change the current variable value. """
 
     def __init__(self):
         pass
+
 
 class Description(object):
     """ A variable which provides a description and value. """
@@ -116,7 +113,7 @@ class Environment(object):
         self._tasks = {}
         self._funcs = {}
         self._filters = {}
-        self._variables_cmdline = ()
+        self._variables_default = set()
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
@@ -147,7 +144,6 @@ class Environment(object):
         return {
             "env": self,
             "Error": Error,
-            "IfNotSet": IfNotSet,
             "Default": Default,
             "Literal": Literal,
             "Delete": Delete,
@@ -177,15 +173,13 @@ class Environment(object):
         if isinstance(value, Delete):
             # Delete the variable
             self._variables.pop(name, None)
-        elif isinstance(value, IfNotSet):
-            # Set if not already set
-            if name not in self._variables:
-                self[name] = value._value
+            self._variables_default.discard(name)
         elif isinstance(value, Default):
-            # Set if not set or if set but not from command line
-            # (This allows one Default to override another Default)
-            if name not in self._variables or name not in self._variables_cmdline:
+            # Only set if not already set or if the set value was another default
+            if name not in self._variables or name in self._variables_default:
                 self[name] = value._value
+                # direct set below clears default flag, so add it again
+                self._variables_default.add(name)
         elif isinstance(value, NoChange):
             pass
         elif isinstance(value, Description):
@@ -193,6 +187,8 @@ class Environment(object):
             self[name] = value._value
         else:
             self._variables[name] = value
+            # direct set clears the default flag
+            self._variables_default.discard(name)
 
     def __getitem__(self, name):
         """ Get a variable value. """
@@ -638,7 +634,6 @@ class App(object):
 
         # Set command line NAME=VALUE variables before loading the file
         (tasks, params) = self.get_tasks_params()
-        env._variables_cmdline = tuple(params.keys()) # remmeber which variables were passed
         env.update(**params)
 
         env["_TOP_"] = os.path.dirname(self.taskfile)
