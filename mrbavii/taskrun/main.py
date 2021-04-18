@@ -479,6 +479,8 @@ class Task(object):
             self._desc = desc
         elif fn.__doc__:
             self._desc = fn.__doc__.strip()
+        else:
+            self._desc = None
 
         self._vars = dict()
         self._var_desc = dict()
@@ -488,7 +490,6 @@ class Task(object):
                 self._var_desc[name] = value._desc
             else:
                 self._vars[name] = value
-
 
     def execute(self, vars):
         if self._once and self._called:
