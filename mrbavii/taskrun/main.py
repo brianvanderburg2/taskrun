@@ -256,7 +256,10 @@ class Environment(object):
         """ Escape a string so subst will return the original value. """
         return re.sub(r"\$", "$$", value)
 
-    def task(self, name=None, extend=False, once=True, depends=None, **vars):
+    def task(
+            self, name=None, extend=False, once=True, depends=None, desc=None,
+            **vars
+        ):
         """ Decorator to register a task. """
         def wrapper(fn):
             if name is not None:
@@ -270,30 +273,15 @@ class Environment(object):
 
             newtask = Task(self, fn, once, depends, vars)
 
-            if fn.__doc__:
+            if desc is not None:
+                newtask._desc = desc
+            elif fn.__doc__:
                 newtask._desc = fn.__doc__.strip()
+
 
             self._task_map[fn] = newtask
             entries.append(newtask)
 
-            return fn
-        return wrapper
-
-    def taskdesc(self, desc):
-        """ Function to add a task desc message. """
-        def wrapper(fn):
-            task = self._task_map[fn]
-            task._desc = desc
-            return fn
-        return wrapper
-
-    def taskvar(self, var, desc, default=None):
-        """ Function to add description to a task variable. """
-        def wrapper(fn):
-            task = self._task_map[fn]
-            task._var_desc[var] = desc
-            if default is not None:
-                task._vars[var] = default
             return fn
         return wrapper
 
@@ -485,10 +473,17 @@ class Task(object):
         self._env = env
         self._fn = fn
         self._once = once
-        self._vars = dict(args)
         self._called = False
         self._desc = None
+
+        self._vars = dict()
         self._var_desc = dict()
+        for (name, value) in args.items():
+            if isinstance(value, Description):
+                self._vars[name] = value._value
+                self._var_desc[name] = value._desc
+            else:
+                self._vars[name] = value
 
         if isinstance(depends, (tuple, list)):
             self._depends = tuple(depends)
