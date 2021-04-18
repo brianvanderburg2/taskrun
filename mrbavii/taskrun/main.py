@@ -356,7 +356,7 @@ class Environment(object):
         """ Call the module factory. """
 
         if name in self._modules:
-            return self._modules[name](self)
+            return self._modules[name]()
 
         raise Error("No such module: {0}".format(name))
 
