@@ -113,6 +113,7 @@ class Environment(object):
         self._tasks = {}
         self._funcs = {}
         self._filters = {}
+        self._modules = {}
         self._variables_default = set()
         self._variables = {}
         self._variable_stack = []
@@ -347,6 +348,29 @@ class Environment(object):
             return self._filters[name](value)
         else:
             raise Error("No such filter: {0}".format(name))
+
+    def module(self, name=None):
+        """ Define a module factory. """
+        def wrapper(fn):
+            if name is not None:
+                _name = name
+            else:
+                _name = fn.__name__
+
+            if name in self._modules:
+                raise Error("Module already defined: {0}".format(_name))
+
+            self._modules[_name] = fn
+            return fn
+        return wrapper
+
+    def loadmodule(self, name):
+        """ Call the module factory. """
+
+        if name in self._modules:
+            return self._modules[name](self)
+
+        raise Error("No such module: {0}".format(name))
 
     def include(self, *patterns):
         """ Include a file. """
