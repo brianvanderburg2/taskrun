@@ -16,6 +16,7 @@ import types
 import subprocess
 import collections
 import argparse
+import inspect
 
 try:
     StringTypes = types.StringTypes
@@ -119,7 +120,6 @@ class Environment(object):
         self._variable_stack = []
         self._script_stack = []
         self._verbose = []
-        self._task_map = {}
         self._var_desc = {}
 
     def _load(self, filename):
@@ -271,15 +271,7 @@ class Environment(object):
             if len(entries) and not extend:
                 raise Error("Task already defined: {0}".format(_name))
 
-            newtask = Task(self, fn, once, depends, vars)
-
-            if desc is not None:
-                newtask._desc = desc
-            elif fn.__doc__:
-                newtask._desc = fn.__doc__.strip()
-
-
-            self._task_map[fn] = newtask
+            newtask = Task(self, fn, once, depends, desc, vars)
             entries.append(newtask)
 
             return fn
@@ -469,12 +461,24 @@ class Environment(object):
 class Task(object):
     """ Represent a task to be called. """
 
-    def __init__(self, env, fn, once, depends, args):
+    def __init__(self, env, fn, once, depends, desc, args):
         self._env = env
         self._fn = fn
+
         self._once = once
         self._called = False
-        self._desc = None
+
+        if isinstance(depends, (tuple, list)):
+            self._depends = tuple(depends)
+        elif isinstance(depends, StringTypes):
+            self._depends = (depends,)
+        else:
+            self._depends = ()
+
+        if desc is not None:
+            self._desc = desc
+        elif fn.__doc__:
+            self._desc = fn.__doc__.strip()
 
         self._vars = dict()
         self._var_desc = dict()
@@ -485,12 +489,6 @@ class Task(object):
             else:
                 self._vars[name] = value
 
-        if isinstance(depends, (tuple, list)):
-            self._depends = tuple(depends)
-        elif isinstance(depends, StringTypes):
-            self._depends = (depends,)
-        else:
-            self._depends = ()
 
     def execute(self, vars):
         if self._once and self._called:
