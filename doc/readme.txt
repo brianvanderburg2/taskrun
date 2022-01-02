@@ -17,8 +17,8 @@ Usage
 mrbavii-taskrun [-d dir] [-f file] [params] [tasks]
 
 -d dir, --dir dir
-    Specify the directory to search for the task file. By default walk
-    up the directory tree until the task file is found
+    Specify the directory to search for the task file.  By default the current
+    directory is searched.
 
 -f file, --file file
     Specify an alternative name for the task file.  By default the task file
@@ -84,13 +84,9 @@ Set a variable in the environment.  Several special forms exist:
 
 env[name] = Default(value)
 
-    Set a variable if it is not already set, or if it is already set but was
-    not specified as a top-level parameter on the command line.  This allows
-    one default to be set but then to be overriden by another default later.
-
-env[name] = IfNotSet(value)
-
-    Set the variable if it is not already set.
+    Set a variable if it is not already set, or if it is already set as another
+    default value. This allows one default to be set but then to be overriden
+    by another default later.
 
 env[name] = Delete()
 
@@ -99,7 +95,7 @@ env[name] = Delete()
 
     @env.task(USER=Delete())
     def task():
-        env["USER"] = IfNotSet("foobar")
+        env["USER"] = Default("foobar")
 
     This would require the USER variable to be set as a task-level variable:
 
@@ -112,6 +108,15 @@ env[name] = Description("...", value)
     Set a description on a variable to be displayed with the variable-related
     help. The value is applied recursively so can be any of the above types
     as well.
+
+env[name] = Locked(value)
+
+    Set a variable to be locked. Once locked it cannot be changed again
+
+env[name] = Delayed(fn, once=True)
+
+    Set a variable to be a delayed function call.  The function may be called
+    once and the result remembered, or each time the variable is accessed.
 
 env[name]
 ---------
@@ -156,7 +161,7 @@ Escape a value so that substitution returns the orginal value.
 
 
 
-@env.task(name=None, extend=False, once=True, depends=None, **vars)
+@env.task(name=None, extend=False, once=True, depends=None, desc=None, **vars)
 ------------------------------------------------------
 
 Declare the next function to be a task.  The function takes no arguments
@@ -182,6 +187,8 @@ Parameters:
         will have the same environment set as the current task.  However,
         as the task is preserved, changed made to the environment in the called
         task will not be visible in the current task.
+    desc
+        Specified a description to be shown for the task.
     **vars
         Additional name=value parameters specify variables to be set when the
         task is called.  These will override variables set outside the task
