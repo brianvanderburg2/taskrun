@@ -55,8 +55,8 @@ class Literal(object):
 
 
 class Default(object):
-    """ Represent a default value that is set if not specified via command line.
-        Note this only checks the top level variables not task variables.
+    """ Represent a default value that is set if not already set or if set as
+        another default value.
     """
 
     def __init__(self, value):
