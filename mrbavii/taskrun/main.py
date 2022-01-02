@@ -84,6 +84,28 @@ class Description(object):
         self._desc = desc
         self._value = value
 
+class Locked(object):
+    """ A variable which once set cannot be changed. """
+
+    def __init__(self, value):
+        self._value = value
+
+class Delayed(object):
+    """ A variable evaluated by a function call when accessed. """
+
+    def __init__(self, fn, once=True):
+        self._fn = fn
+        self._once = once
+        self._value = None
+        self._called = False
+
+    def get(self):
+        if not (self._once and self._called):
+            self._value = self._fn()
+            self._called = True
+
+        return self._value
+
 
 class RunResult(object):
 
@@ -116,6 +138,7 @@ class Environment(object):
         self._filters = {}
         self._modules = {}
         self._variables_default = set()
+        self._variables_locked = set()
         self._variables = {}
         self._variable_stack = []
         self._script_stack = []
@@ -149,7 +172,9 @@ class Environment(object):
             "Literal": Literal,
             "Delete": Delete,
             "NoChange": NoChange,
-            "Description": Description
+            "Description": Description,
+            "Locked": Locked,
+            "Delayed": Delayed
         }
 
     def __enter__(self):
@@ -171,6 +196,9 @@ class Environment(object):
 
     def __setitem__(self, name, value):
         """ Set a variable value. """
+        if name in self._variables_locked:
+            raise Error("Attempted to set a variable which is already locked: {0}".format(name))
+
         if isinstance(value, Delete):
             # Delete the variable
             self._variables.pop(name, None)
@@ -186,6 +214,9 @@ class Environment(object):
         elif isinstance(value, Description):
             self._var_desc[name] = value._desc
             self[name] = value._value
+        elif isinstance(value, Locked):
+            self[name] = value._value # Set before setting the locked flag
+            self._variables_locked.add(name)
         else:
             self._variables[name] = value
             # direct set clears the default flag
@@ -194,7 +225,11 @@ class Environment(object):
     def __getitem__(self, name):
         """ Get a variable value. """
         if name in self._variables:
-            return self._variables[name]
+            result = self._variables[name]
+
+            if isinstance(result, Delayed):
+                return result.get()
+            return result
 
         raise VariableError(name)
 
